@@ -185,10 +185,8 @@ const AnalyticsDashboard = ({ onBack }: { onBack: () => void }) => {
   const [stats, setStats] = useState<any>(null);
 
   useEffect(() => {
-    fetch('/api/analytics')
-      .then(res => res.json())
-      .then(data => setStats(data))
-      .catch(err => console.error("Error fetching analytics:", err));
+    const data = JSON.parse(localStorage.getItem('luvshuv_stats') || '{"unconventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0},"conventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0}}');
+    setStats(data);
   }, []);
 
   if (!stats) return null;
@@ -244,12 +242,9 @@ const AnalyticsDashboard = ({ onBack }: { onBack: () => void }) => {
         </div>
         <button 
           onClick={() => {
-            fetch('/api/analytics/reset', { method: 'POST' })
-              .then(() => {
-                const resetData = {"unconventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0},"conventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0}};
-                setStats(resetData);
-              })
-              .catch(err => console.error("Error resetting analytics:", err));
+            const resetData = {"unconventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0},"conventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0}};
+            localStorage.setItem('luvshuv_stats', JSON.stringify(resetData));
+            setStats(resetData);
           }}
           className="mt-8 text-sm text-gray-400 hover:text-red-500 underline transition-colors"
         >
@@ -272,19 +267,17 @@ export default function App() {
     setVariant(selectedVariant);
 
     // Initialize & increment launches
-    fetch('/api/analytics/track', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ variant: selectedVariant, event: 'launches' })
-    }).catch(err => console.error("Error tracking launch:", err));
+    const currentStats = JSON.parse(localStorage.getItem('luvshuv_stats') || '{"unconventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0},"conventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0}}');
+    currentStats[selectedVariant].launches += 1;
+    localStorage.setItem('luvshuv_stats', JSON.stringify(currentStats));
 
     // Track time spent
     const timer = setInterval(() => {
-      fetch('/api/analytics/track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ variant: selectedVariant, event: 'timeSpent', value: 1 })
-      }).catch(err => console.error("Error tracking time:", err));
+      const stats = JSON.parse(localStorage.getItem('luvshuv_stats') || '{}');
+      if (stats[selectedVariant]) {
+        stats[selectedVariant].timeSpent += 1;
+        localStorage.setItem('luvshuv_stats', JSON.stringify(stats));
+      }
     }, 1000);
 
     return () => clearInterval(timer);
@@ -296,11 +289,11 @@ export default function App() {
     const observer = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting && !hasScrolled) {
         setHasScrolled(true);
-        fetch('/api/analytics/track', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ variant, event: 'scrolledBottom' })
-        }).catch(err => console.error("Error tracking scroll:", err));
+        const stats = JSON.parse(localStorage.getItem('luvshuv_stats') || '{}');
+        if (stats[variant]) {
+          stats[variant].scrolledBottom += 1;
+          localStorage.setItem('luvshuv_stats', JSON.stringify(stats));
+        }
       }
     }, { threshold: 0.1 });
 
@@ -311,11 +304,11 @@ export default function App() {
   }, [variant, view, hasScrolled]);
 
   const handleSurveyClick = (type: 'clickedYes' | 'clickedNo') => {
-    fetch('/api/analytics/track', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ variant, event: type })
-    }).catch(err => console.error("Error tracking click:", err));
+    const stats = JSON.parse(localStorage.getItem('luvshuv_stats') || '{}');
+    if (stats[variant]) {
+      stats[variant][type] += 1;
+      localStorage.setItem('luvshuv_stats', JSON.stringify(stats));
+    }
     alert("Thank you for your feedback!");
   };
 
