@@ -181,15 +181,91 @@ const COMMON_CONTENT = {
   }
 };
 
+const ANALYTICS_POST_URL = 'https://nichecomp.co.in/htdocs/index.php';
+const ANALYTICS_LOG_URL = 'https://nichecomp.co.in/htdocs/analytics.txt';
+
+// Using a public proxy to bypass CORS for the GET request
+const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+
+const sendAnalyticsEvent = async (variant: string, event: string) => {
+  try {
+    const formData = new FormData();
+    formData.append('variant', variant);
+    formData.append('event', event);
+    formData.append('timestamp', new Date().toISOString());
+    
+    await fetch(ANALYTICS_POST_URL, {
+      method: 'POST',
+      body: formData,
+      mode: 'no-cors' 
+    });
+  } catch (err) {
+    console.error('Failed to send analytics:', err);
+  }
+};
+
 const AnalyticsDashboard = ({ onBack }: { onBack: () => void }) => {
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<any>({
+    unconventional: { launches: 0, timeSpent: 0, scrolledBottom: 0, clickedYes: 0, clickedNo: 0 },
+    conventional: { launches: 0, timeSpent: 0, scrolledBottom: 0, clickedYes: 0, clickedNo: 0 }
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const data = JSON.parse(localStorage.getItem('luvshuv_stats') || '{"unconventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0},"conventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0}}');
-    setStats(data);
+    const fetchStats = async () => {
+      try {
+        // Append cache buster and use proxy
+        const targetUrl = `${ANALYTICS_LOG_URL}?t=${Date.now()}`;
+        const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`);
+        
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const text = await response.text();
+        
+        // The format is JSON|JSON|JSON|
+        const chunks = text.split('|').filter(Boolean);
+        const events = chunks.map(chunk => {
+          try {
+            return JSON.parse(chunk);
+          } catch (e) {
+            return null;
+          }
+        }).filter(Boolean);
+
+        const aggregated = {
+          unconventional: { launches: 0, timeSpent: 0, scrolledBottom: 0, clickedYes: 0, clickedNo: 0 },
+          conventional: { launches: 0, timeSpent: 0, scrolledBottom: 0, clickedYes: 0, clickedNo: 0 }
+        };
+
+        events.forEach((ev: any) => {
+          const v = ev.variant as 'unconventional' | 'conventional';
+          if (!aggregated[v]) return;
+
+          if (ev.event === 'launch') aggregated[v].launches += 1;
+          if (ev.event === 'scroll') aggregated[v].scrolledBottom += 1;
+          if (ev.event === 'click_yes') aggregated[v].clickedYes += 1;
+          if (ev.event === 'click_no') aggregated[v].clickedNo += 1;
+          if (ev.event === 'heartbeat') aggregated[v].timeSpent += 10;
+        });
+
+        setStats(aggregated);
+      } catch (err) {
+        console.error('Failed to fetch stats:', err);
+        setError('Could not connect to the analytics server. Please ensure the server allows CORS or try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
   }, []);
 
-  if (!stats) return null;
+  if (loading) return (
+    <div className="min-h-screen bg-[#FDF8EE] flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#A61919]"></div>
+    </div>
+  );
 
   const renderVariantStats = (name: string, data: any) => {
     const scrollRate = data.launches ? Math.round((data.scrolledBottom / data.launches) * 100) : 0;
@@ -202,7 +278,7 @@ const AnalyticsDashboard = ({ onBack }: { onBack: () => void }) => {
         <h3 className="text-xl font-bold mb-4 capitalize">{name}</h3>
         <div className="space-y-4">
           <div className="flex justify-between items-center border-b border-gray-50 pb-3">
-            <span className="text-gray-600">Total Launches</span>
+            <span className="text-gray-600">Total Sessions</span>
             <span className="font-bold text-lg">{data.launches}</span>
           </div>
           <div className="flex justify-between items-center border-b border-gray-50 pb-3">
@@ -210,7 +286,7 @@ const AnalyticsDashboard = ({ onBack }: { onBack: () => void }) => {
             <span className="font-bold text-lg">{avgTime}s</span>
           </div>
           <div className="flex justify-between items-center border-b border-gray-50 pb-3">
-            <span className="text-gray-600">Scrolled to Bottom</span>
+            <span className="text-gray-600">Scroll Depth (Bottom)</span>
             <span className="font-bold text-lg">{scrollRate}%</span>
           </div>
           <div className="flex justify-between items-center border-b border-gray-50 pb-3">
@@ -234,22 +310,23 @@ const AnalyticsDashboard = ({ onBack }: { onBack: () => void }) => {
         </button>
         <div className="flex items-center gap-3 mb-8">
           <BarChart3 className="w-8 h-8 text-[#A61919]" />
-          <h1 className="text-3xl font-bold">A/B Test Analytics</h1>
+          <h1 className="text-3xl font-bold">Live A/B Test Analytics</h1>
         </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-xl mb-8 flex items-center gap-3">
+            <XCircle className="w-5 h-5" />
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+        )}
+
         <div className="grid md:grid-cols-2 gap-8">
           {renderVariantStats('Unconventional (Luvshuv)', stats.unconventional)}
           {renderVariantStats('Conventional (Standard)', stats.conventional)}
         </div>
-        <button 
-          onClick={() => {
-            const resetData = {"unconventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0},"conventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0}};
-            localStorage.setItem('luvshuv_stats', JSON.stringify(resetData));
-            setStats(resetData);
-          }}
-          className="mt-8 text-sm text-gray-400 hover:text-red-500 underline transition-colors"
-        >
-          Reset Analytics Data
-        </button>
+        <p className="mt-12 text-sm text-gray-400 text-center italic">
+          Data is fetched via a CORS proxy from the third-party PHP server.
+        </p>
       </div>
     </div>
   );
@@ -266,19 +343,13 @@ export default function App() {
     const selectedVariant = isConventional ? 'conventional' : 'unconventional';
     setVariant(selectedVariant);
 
-    // Initialize & increment launches
-    const currentStats = JSON.parse(localStorage.getItem('luvshuv_stats') || '{"unconventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0},"conventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0}}');
-    currentStats[selectedVariant].launches += 1;
-    localStorage.setItem('luvshuv_stats', JSON.stringify(currentStats));
+    // Track launch
+    sendAnalyticsEvent(selectedVariant, 'launch');
 
-    // Track time spent
+    // Track time spent via heartbeats every 10s
     const timer = setInterval(() => {
-      const stats = JSON.parse(localStorage.getItem('luvshuv_stats') || '{}');
-      if (stats[selectedVariant]) {
-        stats[selectedVariant].timeSpent += 1;
-        localStorage.setItem('luvshuv_stats', JSON.stringify(stats));
-      }
-    }, 1000);
+      sendAnalyticsEvent(selectedVariant, 'heartbeat');
+    }, 10000);
 
     return () => clearInterval(timer);
   }, []);
@@ -289,11 +360,7 @@ export default function App() {
     const observer = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting && !hasScrolled) {
         setHasScrolled(true);
-        const stats = JSON.parse(localStorage.getItem('luvshuv_stats') || '{}');
-        if (stats[variant]) {
-          stats[variant].scrolledBottom += 1;
-          localStorage.setItem('luvshuv_stats', JSON.stringify(stats));
-        }
+        sendAnalyticsEvent(variant, 'scroll');
       }
     }, { threshold: 0.1 });
 
@@ -304,11 +371,8 @@ export default function App() {
   }, [variant, view, hasScrolled]);
 
   const handleSurveyClick = (type: 'clickedYes' | 'clickedNo') => {
-    const stats = JSON.parse(localStorage.getItem('luvshuv_stats') || '{}');
-    if (stats[variant]) {
-      stats[variant][type] += 1;
-      localStorage.setItem('luvshuv_stats', JSON.stringify(stats));
-    }
+    const event = type === 'clickedYes' ? 'click_yes' : 'click_no';
+    sendAnalyticsEvent(variant, event);
     alert("Thank you for your feedback!");
   };
 
