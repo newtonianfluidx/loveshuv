@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Heart, Brain, MessageCircle, ShieldCheck, Activity, ArrowRight, CheckCircle2, XCircle, Star, Quote } from 'lucide-react';
+import { Heart, Brain, MessageCircle, ShieldCheck, Activity, ArrowRight, ArrowDown, CheckCircle2, XCircle, Star, Quote, BarChart3, ArrowLeft } from 'lucide-react';
 
 const Logo = () => (
   <div className="flex items-center gap-3">
@@ -163,32 +163,165 @@ const COMMON_CONTENT = {
         name: "Michael & Emma",
         time: "Together for 2 years",
         quote: "We matched on a Tuesday, met for coffee on Thursday, and honestly haven't stopped talking since. The initial connection felt so natural.",
-        image: "https://picsum.photos/seed/couple1/400/400"
+        image: "https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?w=400&h=400&fit=crop&q=80"
       },
       {
         name: "David & James",
         time: "Engaged",
         quote: "I was so tired of dating apps before I tried this one. The quality of matches was just completely different from day one.",
-        image: "https://picsum.photos/seed/couple2/400/400"
+        image: "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=400&h=400&fit=crop&q=80"
       },
       {
         name: "Sophia & Alex",
         time: "Married last month",
         quote: "It's rare to find an app that actually delivers on its promise. We both knew exactly what we wanted, and the app helped us find each other.",
-        image: "https://picsum.photos/seed/couple3/400/400"
+        image: "https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=400&h=400&fit=crop&q=80"
       }
     ]
   }
 };
 
+const AnalyticsDashboard = ({ onBack }: { onBack: () => void }) => {
+  const [stats, setStats] = useState<any>(null);
+
+  useEffect(() => {
+    fetch('/api/analytics')
+      .then(res => res.json())
+      .then(data => setStats(data))
+      .catch(err => console.error("Error fetching analytics:", err));
+  }, []);
+
+  if (!stats) return null;
+
+  const renderVariantStats = (name: string, data: any) => {
+    const scrollRate = data.launches ? Math.round((data.scrolledBottom / data.launches) * 100) : 0;
+    const yesRate = data.launches ? Math.round((data.clickedYes / data.launches) * 100) : 0;
+    const noRate = data.launches ? Math.round((data.clickedNo / data.launches) * 100) : 0;
+    const avgTime = data.launches ? Math.round(data.timeSpent / data.launches) : 0;
+
+    return (
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <h3 className="text-xl font-bold mb-4 capitalize">{name}</h3>
+        <div className="space-y-4">
+          <div className="flex justify-between items-center border-b border-gray-50 pb-3">
+            <span className="text-gray-600">Total Launches</span>
+            <span className="font-bold text-lg">{data.launches}</span>
+          </div>
+          <div className="flex justify-between items-center border-b border-gray-50 pb-3">
+            <span className="text-gray-600">Avg. Time Spent</span>
+            <span className="font-bold text-lg">{avgTime}s</span>
+          </div>
+          <div className="flex justify-between items-center border-b border-gray-50 pb-3">
+            <span className="text-gray-600">Scrolled to Bottom</span>
+            <span className="font-bold text-lg">{scrollRate}%</span>
+          </div>
+          <div className="flex justify-between items-center border-b border-gray-50 pb-3">
+            <span className="text-gray-600">Clicked "Interesting"</span>
+            <span className="font-bold text-lg text-green-600">{yesRate}%</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600">Clicked "Not Interesting"</span>
+            <span className="font-bold text-lg text-red-600">{noRate}%</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-[#FDF8EE] p-8 font-sans text-gray-900">
+      <div className="max-w-4xl mx-auto pt-8">
+        <button onClick={onBack} className="flex items-center gap-2 text-[#A61919] font-bold mb-8 hover:underline">
+          <ArrowLeft className="w-4 h-4" /> Back to Landing Page
+        </button>
+        <div className="flex items-center gap-3 mb-8">
+          <BarChart3 className="w-8 h-8 text-[#A61919]" />
+          <h1 className="text-3xl font-bold">A/B Test Analytics</h1>
+        </div>
+        <div className="grid md:grid-cols-2 gap-8">
+          {renderVariantStats('Unconventional (Luvshuv)', stats.unconventional)}
+          {renderVariantStats('Conventional (Standard)', stats.conventional)}
+        </div>
+        <button 
+          onClick={() => {
+            fetch('/api/analytics/reset', { method: 'POST' })
+              .then(() => {
+                const resetData = {"unconventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0},"conventional":{"launches":0,"timeSpent":0,"scrolledBottom":0,"clickedYes":0,"clickedNo":0}};
+                setStats(resetData);
+              })
+              .catch(err => console.error("Error resetting analytics:", err));
+          }}
+          className="mt-8 text-sm text-gray-400 hover:text-red-500 underline transition-colors"
+        >
+          Reset Analytics Data
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [variant, setVariant] = useState<'unconventional' | 'conventional'>('unconventional');
+  const [view, setView] = useState<'landing' | 'analytics'>('landing');
+  const [hasScrolled, setHasScrolled] = useState(false);
 
   useEffect(() => {
     // 50/50 chance to show either variant
     const isConventional = Math.random() < 0.5;
-    setVariant(isConventional ? 'conventional' : 'unconventional');
+    const selectedVariant = isConventional ? 'conventional' : 'unconventional';
+    setVariant(selectedVariant);
+
+    // Initialize & increment launches
+    fetch('/api/analytics/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variant: selectedVariant, event: 'launches' })
+    }).catch(err => console.error("Error tracking launch:", err));
+
+    // Track time spent
+    const timer = setInterval(() => {
+      fetch('/api/analytics/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variant: selectedVariant, event: 'timeSpent', value: 1 })
+      }).catch(err => console.error("Error tracking time:", err));
+    }, 1000);
+
+    return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (view !== 'landing' || hasScrolled) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !hasScrolled) {
+        setHasScrolled(true);
+        fetch('/api/analytics/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ variant, event: 'scrolledBottom' })
+        }).catch(err => console.error("Error tracking scroll:", err));
+      }
+    }, { threshold: 0.1 });
+
+    const ctaSection = document.getElementById('cta-section');
+    if (ctaSection) observer.observe(ctaSection);
+
+    return () => observer.disconnect();
+  }, [variant, view, hasScrolled]);
+
+  const handleSurveyClick = (type: 'clickedYes' | 'clickedNo') => {
+    fetch('/api/analytics/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variant, event: type })
+    }).catch(err => console.error("Error tracking click:", err));
+    alert("Thank you for your feedback!");
+  };
+
+  if (view === 'analytics') {
+    return <AnalyticsDashboard onBack={() => setView('landing')} />;
+  }
 
   const t = CONTENT[variant];
   const c = COMMON_CONTENT;
@@ -199,13 +332,10 @@ export default function App() {
       <nav className="container mx-auto px-6 py-6 flex justify-between items-center">
         <Logo />
         <div className="hidden md:flex gap-8 font-medium text-gray-700">
-          <a href="#features" className="hover:text-[#A61919] transition-colors">Why Luvshuv</a>
           <a href="#how-it-works" className="hover:text-[#A61919] transition-colors">How it Works</a>
-          <a href="#stories" className="hover:text-[#A61919] transition-colors">Success Stories</a>
+          <a href="#features" className="hover:text-[#A61919] transition-colors">Features</a>
+          <button onClick={() => setView('analytics')} className="hover:text-[#A61919] transition-colors">Success Stories</button>
         </div>
-        <button className="bg-[#A61919] text-white px-6 py-2.5 rounded-full font-semibold hover:bg-[#8A1515] transition-colors shadow-md">
-          Join Waitlist
-        </button>
       </nav>
 
       {/* Hero Section */}
@@ -226,18 +356,16 @@ export default function App() {
             {t.heroDesc}
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
-            <button className="bg-[#A61919] text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-[#8A1515] transition-colors shadow-lg flex items-center justify-center gap-2">
-              {t.heroPrimaryBtn} <ArrowRight className="w-5 h-5" />
-            </button>
-            <button className="bg-white text-gray-800 border border-gray-200 px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-50 transition-colors shadow-sm">
-              {t.heroSecondaryBtn}
-            </button>
+            <a href="#how-it-works" className="bg-[#A61919] text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-[#8A1515] transition-colors shadow-lg inline-flex items-center justify-center gap-2 w-fit">
+              See How It Works <ArrowDown className="w-5 h-5" />
+            </a>
           </div>
           <div className="flex items-center gap-4 text-sm text-gray-500 font-medium">
             <div className="flex -space-x-2">
-              {[1,2,3,4].map(i => (
-                <img key={i} src={`https://picsum.photos/seed/user${i}/100/100`} alt="User" className="w-8 h-8 rounded-full border-2 border-[#FDF8EE]" referrerPolicy="no-referrer" />
-              ))}
+              <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&q=80" alt="User" className="w-8 h-8 rounded-full border-2 border-[#FDF8EE]" referrerPolicy="no-referrer" />
+              <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&h=100&fit=crop&q=80" alt="User" className="w-8 h-8 rounded-full border-2 border-[#FDF8EE]" referrerPolicy="no-referrer" />
+              <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&q=80" alt="User" className="w-8 h-8 rounded-full border-2 border-[#FDF8EE]" referrerPolicy="no-referrer" />
+              <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&q=80" alt="User" className="w-8 h-8 rounded-full border-2 border-[#FDF8EE]" referrerPolicy="no-referrer" />
             </div>
             <p>{t.heroSocialProof}</p>
           </div>
@@ -261,8 +389,8 @@ export default function App() {
               </div>
 
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex-1 flex flex-col">
-                <img src="https://picsum.photos/seed/couple/400/400" alt="Match" className="w-full aspect-square object-cover rounded-xl mb-4" referrerPolicy="no-referrer" />
-                <h3 className="text-2xl font-bold">{t.mockupName}</h3>
+                <img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=400&fit=crop&q=80" alt="Match" className="w-full aspect-square object-cover rounded-xl mb-4" referrerPolicy="no-referrer" />
+                <h3 className="text-2xl font-bold">Sarah, 28</h3>
                 <p className="text-gray-500 mb-4">Architect • 2 miles away</p>
                 
                 <div className="bg-[#A61919]/5 p-4 rounded-xl mb-4">
@@ -482,8 +610,8 @@ export default function App() {
             </div>
             <div className="md:w-1/2">
               <div className="grid grid-cols-2 gap-4">
-                <img src="https://picsum.photos/seed/prof1/400/500" alt="Professional" className="rounded-2xl w-full h-64 object-cover" referrerPolicy="no-referrer" />
-                <img src="https://picsum.photos/seed/prof2/400/500" alt="Professional" className="rounded-2xl w-full h-64 object-cover mt-8" referrerPolicy="no-referrer" />
+                <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&h=500&fit=crop&q=80" alt="Professional" className="rounded-2xl w-full h-64 object-cover" referrerPolicy="no-referrer" />
+                <img src="https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&h=500&fit=crop&q=80" alt="Professional" className="rounded-2xl w-full h-64 object-cover mt-8" referrerPolicy="no-referrer" />
               </div>
             </div>
           </div>
@@ -491,26 +619,20 @@ export default function App() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-24 bg-[#A61919] text-white text-center">
+      <section id="cta-section" className="py-24 bg-[#A61919] text-white text-center">
         <div className="container mx-auto px-6 max-w-5xl">
           <h2 className="text-4xl md:text-5xl font-bold mb-8">{t.ctaTitle}</h2>
           <p className="text-xl text-white/80 mb-12 max-w-2xl mx-auto">{t.ctaDesc}</p>
           
           <div className="flex flex-col md:flex-row gap-6 justify-center max-w-3xl mx-auto">
             <button 
-              onClick={() => {
-                // TODO: Add analytics tracking for positive response
-                console.log(`User clicked "Interesting" for variant: ${variant}`);
-              }}
+              onClick={() => handleSurveyClick('clickedYes')}
               className="bg-gray-900 text-white px-8 py-5 rounded-2xl font-bold hover:bg-gray-800 transition-colors shadow-lg flex-1 text-lg"
             >
               I find this interesting and would be willing to join
             </button>
             <button 
-              onClick={() => {
-                // TODO: Add analytics tracking for negative response
-                console.log(`User clicked "Not Interesting" for variant: ${variant}`);
-              }}
+              onClick={() => handleSurveyClick('clickedNo')}
               className="bg-white text-[#A61919] px-8 py-5 rounded-2xl font-bold hover:bg-gray-50 transition-colors shadow-lg flex-1 text-lg"
             >
               This does not interest me
